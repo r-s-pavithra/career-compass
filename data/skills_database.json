@@ -1,0 +1,17 @@
+{
+  "software_engineering": {
+    "skills": ["python", "java", "javascript", "c++", "c", "react", "angular", "vue", "node.js", "django", "flask", "fastapi", "spring boot", "sql", "mongodb", "postgresql", "mysql", "git", "docker", "kubernetes", "aws", "azure", "gcp", "rest api", "graphql", "microservices", "agile", "scrum", "jenkins", "ci/cd"]
+  },
+  "data_science": {
+    "skills": ["python", "r", "machine learning", "deep learning", "tensorflow", "pytorch", "keras", "scikit-learn", "pandas", "numpy", "sql", "statistics", "data visualization", "tableau", "power bi", "jupyter", "nlp", "computer vision", "big data", "spark", "hadoop"]
+  },
+  "web_development": {
+    "skills": ["html", "css", "javascript", "react", "angular", "vue", "node.js", "express", "mongodb", "sql", "rest api", "bootstrap", "tailwind css", "webpack", "typescript", "redux", "next.js"]
+  },
+  "devops": {
+    "skills": ["docker", "kubernetes", "jenkins", "git", "ci/cd", "aws", "azure", "gcp", "terraform", "ansible", "linux", "bash", "python", "monitoring", "prometheus", "grafana"]
+  },
+  "mobile_development": {
+    "skills": ["android", "ios", "react native", "flutter", "swift", "kotlin", "java", "firebase", "rest api", "sqlite", "xml"]
+  }
+}
