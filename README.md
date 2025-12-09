@@ -20,5 +20,15 @@ Career Compass is an intelligent career assistant that helps job seekers analyze
 - 📊 **Visual Analytics** - Beautiful charts and metrics for data visualization
 - 🧠 **RAG Pipeline** - Retrieval-Augmented Generation for accurate, context-aware responses
 
+## 🛠️ Tech Stack
 
+**Backend:** FastAPI, Groq AI (Llama 3.3), FAISS, Sentence Transformers  
+**Frontend:** Streamlit, Plotly  
+**AI/ML:** RAG Architecture, Local Embeddings
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.10+
+- Groq API Key (free from [console.groq.com](https://console.groq.com))
 
