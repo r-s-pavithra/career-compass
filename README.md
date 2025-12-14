@@ -122,4 +122,3 @@ Interactive API docs available at:
 
 **PAVITHRA R S**  
 🔗 GitHub: [@r-s-pavithra](https://github.com/r-s-pavithra)  
-📧 Email: pavithrasureshbabur@gmail.com
