@@ -1,715 +1,1098 @@
 import streamlit as st
 import requests
-import json
-import plotly.graph_objects as go
 from datetime import datetime
 
-# API Base URL
-API_URL = "http://127.0.0.1:8000"
 
-# Page config
+# API Base URL
+API_URL = "http://127.0.0.1:8001"
+
+
+# ==================== PAGE CONFIG ====================
 st.set_page_config(
-    page_title="Career Compass - AI Career Assistant",
+    page_title="Career Compass - AI Career Navigator",
     page_icon="🧭",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Professional Custom CSS
+
+# ==================== SESSION STATE INITIALIZATION ====================
+session_defaults = {
+    'authenticated': False,
+    'access_token': None,
+    'user_data': None,
+    'resume_id': None,
+    'resume_data': None,
+    'current_page': "🏠 Home",
+    'messages': [],
+    'job_match_result': None,
+    'show_loader': False,
+    'advice_count': 0,
+    'match_count': 0,
+    'match_scores': [],           # ✅ NEW: Track all match scores
+    'best_match_score': 0,        # ✅ NEW: Best match achieved
+    'avg_match_score': 0,         # ✅ NEW: Average match score
+}
+
+for key, value in session_defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+# ==================== MODERN THEME STYLING ====================
 st.markdown("""
     <style>
-    /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
     
-    /* Global Styles */
     * {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Inter', sans-serif !important;
     }
     
-    .main {
-        padding: 2rem 3rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    :root {
+        --primary: #6366f1;
+        --primary-dark: #4f46e5;
+        --success: #10b981;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --bg-dark: #0f172a;
+        --bg-card: #1e293b;
+        --text-primary: #f1f5f9;
+        --text-secondary: #cbd5e1;
+        --text-muted: #94a3b8;
+        --border-color: #334155;
     }
     
-    /* Header */
-    .main-header {
-        text-align: center;
-        padding: 2rem;
-        background: white;
-        border-radius: 20px;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-        animation: fadeInDown 0.8s ease-in-out;
+    body, .stApp {
+        background-color: var(--bg-dark) !important;
+        background-image: 
+            radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.05) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.05) 0%, transparent 50%);
     }
     
-    .main-header h1 {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        font-size: 3rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
+    /* ✅ HIDE STREAMLIT BRANDING & DEFAULT MENU */
+    #MainMenu {visibility: hidden !important; display: none !important;}
+    footer {visibility: hidden !important; display: none !important;}
+    header {visibility: hidden !important;}
+    .stDeployButton {display: none !important;}
+    
+    /* ✅ HIDE STREAMLIT'S DEFAULT HAMBURGER MENU */
+    button[kind="header"],
+    button[kind="headerNoPadding"] {
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
+
+    /* ✅ HAMBURGER BUTTON - When sidebar is OPEN (close button) */
+    [data-testid="stSidebarCollapseButton"] {
+        position: fixed !important;
+        top: 1rem !important;
+        left: 1rem !important;
+        z-index: 9999999 !important;
+        background: linear-gradient(135deg, #6366f1, #ec4899) !important;
+        border-radius: 12px !important;
+        width: 48px !important;
+        height: 48px !important;
+        min-width: 48px !important;
+        max-width: 48px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.6) !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        padding: 0 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+    }
+
+    /* ✅ HAMBURGER BUTTON - When sidebar is CLOSED (open button) */
+    [data-testid="collapsedControl"] {
+        position: fixed !important;
+        top: 1rem !important;
+        left: 1rem !important;
+        z-index: 9999999 !important;
+        background: linear-gradient(135deg, #6366f1, #ec4899) !important;
+        border-radius: 12px !important;
+        width: 48px !important;
+        height: 48px !important;
+        min-width: 48px !important;
+        max-width: 48px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.6) !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        padding: 0 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        pointer-events: auto !important;
+    }
+
+    /* ✅ Hover effect */
+    [data-testid="collapsedControl"]:hover,
+    [data-testid="stSidebarCollapseButton"]:hover {
+        transform: scale(1.1) !important;
+        box-shadow: 0 6px 30px rgba(99, 102, 241, 0.8) !important;
+        background: linear-gradient(135deg, #4f46e5, #db2777) !important;
+    }
+
+    /* ✅ Hide default content but KEEP button clickable */
+    [data-testid="collapsedControl"] > div,
+    [data-testid="stSidebarCollapseButton"] > div {
+        pointer-events: none !important;
+    }
+
+    [data-testid="collapsedControl"] span,
+    [data-testid="stSidebarCollapseButton"] span,
+    [data-testid="collapsedControl"] svg,
+    [data-testid="stSidebarCollapseButton"] svg {
+        display: none !important;
+    }
+
+    /* ✅ Custom hamburger icon ☰ */
+    [data-testid="collapsedControl"]::before,
+    [data-testid="stSidebarCollapseButton"]::before {
+        content: "☰" !important;
+        font-size: 24px !important;
+        color: white !important;
+        font-family: Arial, sans-serif !important;
+        font-weight: bold !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        pointer-events: none !important;
+        width: 100% !important;
+        height: 100% !important;
     }
     
-    .main-header p {
-        color: #666;
-        font-size: 1.2rem;
-        font-weight: 400;
+    /* ✅ SIDEBAR STYLING */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(10, 14, 39, 0.98)) !important;
+        border-right: 1px solid var(--border-color) !important;
+        backdrop-filter: blur(10px) !important;
     }
     
-    /* Card Styles */
-    .custom-card {
-        background: white;
-        padding: 2rem;
-        border-radius: 15px;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        margin-bottom: 1.5rem;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1rem !important;
     }
     
-    .custom-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    /* Force sidebar content visible */
+    [data-testid="stSidebarContent"],
+    [data-testid="stSidebarUserContent"] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    /* Typography */
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--text-primary) !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
+    }
+    
+    p, span, label {
+        color: var(--text-secondary) !important;
+    }
+    
+    /* Modern Cards */
+    .modern-card {
+        background: linear-gradient(135deg, rgba(30, 41, 59, 0.8), rgba(30, 41, 59, 0.4));
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(148, 163, 184, 0.1);
+        border-radius: 16px;
+        padding: 1.5rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+    }
+    
+    .modern-card:hover {
+        transform: translateY(-4px);
+        border-color: rgba(99, 102, 241, 0.3);
+        box-shadow: 0 20px 25px rgba(99, 102, 241, 0.1);
     }
     
     /* Buttons */
-    .stButton>button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        padding: 0.75rem 2rem;
-        border-radius: 10px;
-        font-weight: 600;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    .stButton > button {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark)) !important;
+        color: white !important;
+        border: none !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 10px !important;
+        font-weight: 600 !important;
+        font-size: 0.95rem !important;
+        transition: all 0.2s ease !important;
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3) !important;
     }
     
-    .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4) !important;
+    }
+    
+    /* Input Fields */
+    .stTextInput input, .stTextArea textarea {
+        background-color: rgba(30, 41, 59, 0.6) !important;
+        border: 1px solid var(--border-color) !important;
+        border-radius: 10px !important;
+        color: var(--text-primary) !important;
+        padding: 0.75rem !important;
+        transition: all 0.2s ease !important;
+    }
+    
+    .stTextInput input:focus, .stTextArea textarea:focus {
+        border-color: var(--primary) !important;
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+        background-color: rgba(30, 41, 59, 0.8) !important;
+    }
+    
+    /* File Uploader */
+    [data-testid="stFileUploader"] {
+        background: rgba(30, 41, 59, 0.4) !important;
+        border: 2px dashed var(--border-color) !important;
+        border-radius: 12px !important;
+        padding: 2rem !important;
     }
     
     /* Metrics */
     [data-testid="stMetricValue"] {
-        font-size: 2rem;
-        font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: var(--primary) !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
     }
     
-    /* Upload Box */
-    [data-testid="stFileUploader"] {
-        background: white;
-        padding: 2rem;
-        border-radius: 15px;
-        border: 2px dashed #667eea;
+    [data-testid="stMetricLabel"] {
+        color: var(--text-muted) !important;
+        font-size: 0.9rem !important;
     }
     
-    /* Text Areas */
-    .stTextArea textarea {
-        border-radius: 10px;
-        border: 2px solid #e0e0e0;
-        padding: 1rem;
-        font-size: 1rem;
+    /* Chat Messages */
+    .stChatMessage {
+        background: rgba(30, 41, 59, 0.5) !important;
+        border-radius: 12px !important;
+        padding: 1rem !important;
     }
     
-    .stTextArea textarea:focus {
-        border-color: #667eea;
-        box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
     }
     
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem 1rem;
+    ::-webkit-scrollbar-track {
+        background: rgba(99, 102, 241, 0.05);
     }
     
-    [data-testid="stSidebar"] h1, 
-    [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3,
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] label {
-        color: white !important;
+    ::-webkit-scrollbar-thumb {
+        background: rgba(99, 102, 241, 0.3);
+        border-radius: 4px;
     }
     
-    /* Progress Bar */
-    .stProgress > div > div {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(99, 102, 241, 0.5);
+    }
+
+    /* ✅ FIX EXPANDER ARROWS */
+    [data-testid="stExpander"] summary span[data-testid="stIconMaterial"] {
+        display: inline-flex !important;
+        visibility: visible !important;
+        font-size: 1.2rem !important;
+        color: var(--text-primary) !important;
+        font-family: 'Material Icons' !important;
     }
     
-    /* Animations */
-    @keyframes fadeInDown {
-        from {
-            opacity: 0;
-            transform: translateY(-20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+    [data-testid="stExpander"] summary span[data-testid="stIconMaterial"] {
+        font-size: 0 !important;
+        line-height: 0 !important;
     }
     
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(20px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+    [data-testid="stExpander"] summary span[data-testid="stIconMaterial"]::before {
+        font-size: 1rem !important;
+        line-height: normal !important;
+        color: var(--primary) !important;
+        display: inline-block !important;
     }
     
-    .fade-in {
-        animation: fadeInUp 0.6s ease-in-out;
+    [data-testid="stExpander"] summary {
+        cursor: pointer !important;
+        padding: 1rem !important;
+        background: rgba(99, 102, 241, 0.05) !important;
+        border-radius: 8px !important;
+        transition: all 0.2s ease !important;
     }
     
-    /* Skill Tags */
-    .skill-tag {
-        display: inline-block;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        margin: 0.25rem;
-        font-weight: 500;
-        font-size: 0.9rem;
+    [data-testid="stExpander"] summary:hover {
+        background: rgba(99, 102, 241, 0.1) !important;
     }
-    
-    /* Success/Error Messages */
-    .stAlert {
-        border-radius: 10px;
-        border: none;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
-    
-    /* Expander */
-    .streamlit-expanderHeader {
-        background: white;
-        border-radius: 10px;
-        padding: 1rem;
-        font-weight: 600;
-    }
-    
-    /* Footer */
-    .footer {
-        text-align: center;
-        padding: 2rem;
-        background: white;
-        border-radius: 15px;
-        margin-top: 3rem;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-    }
+
     </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'resume_id' not in st.session_state:
-    st.session_state.resume_id = None
-if 'resume_data' not in st.session_state:
-    st.session_state.resume_data = None
 
-# Header
-st.markdown("""
-    <div class="main-header">
-        <h1>🧭 Career Compass</h1>
-        <p>Your AI-Powered Career Navigator</p>
-    </div>
-""", unsafe_allow_html=True)
+# ==================== HELPER FUNCTIONS ====================
+def get_auth_headers():
+    """Get authorization headers"""
+    if st.session_state.access_token:
+        return {"Authorization": f"Bearer {st.session_state.access_token}"}
+    return {}
 
-# Sidebar
-with st.sidebar:
-    st.markdown("<h2 style='text-align: center; margin-bottom: 2rem;'>📋 Navigation</h2>", unsafe_allow_html=True)
-    
-    page = st.radio(
-        "Navigation Menu",
-        ["🏠 Home", "📄 Upload Resume", "🎯 Job Match", "💬 Career Advice", "📁 My Resumes"],
-        label_visibility="collapsed"
-    )
-    
-    st.markdown("<hr style='border-color: rgba(255,255,255,0.3); margin: 2rem 0;'>", unsafe_allow_html=True)
-    
-    st.markdown("<h3 style='text-align: center;'>📊 Status</h3>", unsafe_allow_html=True)
-    
-    if st.session_state.resume_id:
-        st.success("✅ Resume Active")
-        st.info(f"🆔 {st.session_state.resume_id[:12]}...")
-        if st.session_state.resume_data:
-            st.metric("Skills", len(st.session_state.resume_data.get('skills', [])))
-    else:
-        st.warning("⚠️ No Active Resume")
-        st.info("Upload a resume to get started!")
-    
-    st.markdown("<hr style='border-color: rgba(255,255,255,0.3); margin: 2rem 0;'>", unsafe_allow_html=True)
-    
-    st.markdown("""
-        <div style='text-align: center;'>
-            <a href='http://127.0.0.1:8000/docs' target='_blank' style='color: white; text-decoration: none;'>
-                📚 API Documentation
-            </a>
-        </div>
-    """, unsafe_allow_html=True)
 
-# Home Page
-if page == "🏠 Home":
-    col1, col2, col3 = st.columns(3)
+def smooth_transition(page_name):
+    """Navigate to a page smoothly"""
+    st.session_state.current_page = page_name
+    st.rerun()
+
+
+def api_call(method, endpoint, **kwargs):
+    """Centralized API call handler"""
+    try:
+        url = f"{API_URL}{endpoint}"
+        headers = kwargs.pop('headers', {})
+        headers.update(get_auth_headers())
+        
+        if 'json' in kwargs:
+            headers['Content-Type'] = 'application/json'
+        
+        if method == "GET":
+            response = requests.get(url, headers=headers, **kwargs)
+        elif method == "POST":
+            response = requests.post(url, headers=headers, **kwargs)
+        elif method == "DELETE":
+            response = requests.delete(url, headers=headers, **kwargs)
+        
+        return response
+    except Exception as e:
+        st.error(f"❌ Connection error: {str(e)}")
+        return None
+
+
+# ==================== LANDING PAGE ====================
+def show_landing_page():
+    """Landing page with authentication"""
     
-    with col1:
-        st.markdown("""
-            <div class="custom-card fade-in">
-                <h2 style='text-align: center;'>📄</h2>
-                <h3 style='text-align: center; color: #667eea;'>Upload Resume</h3>
-                <p style='text-align: center; color: #666;'>
-                    Upload your resume and get instant AI-powered analysis of your skills and experience.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("""
-            <div class="custom-card fade-in">
-                <h2 style='text-align: center;'>🎯</h2>
-                <h3 style='text-align: center; color: #667eea;'>Job Matching</h3>
-                <p style='text-align: center; color: #666;'>
-                    Compare your profile with job descriptions and get detailed match scores.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    with col3:
-        st.markdown("""
-            <div class="custom-card fade-in">
-                <h2 style='text-align: center;'>💬</h2>
-                <h3 style='text-align: center; color: #667eea;'>Career Advice</h3>
-                <p style='text-align: center; color: #666;'>
-                    Get personalized career guidance powered by advanced AI technology.
+            <div style="text-align: center; padding: 3rem 0 2rem;">
+                <div style="font-size: 4rem; margin-bottom: 1rem;">🧭</div>
+                <h1 style="font-size: 3.5rem; margin-bottom: 0.5rem; background: linear-gradient(135deg, #6366f1, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">
+                    Career Compass
+                </h1>
+                <p style="font-size: 1.2rem; color: var(--text-muted); margin-bottom: 3rem;">
+                    Your AI-Powered Career Navigator
                 </p>
             </div>
         """, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns(3, gap="medium")
     
-    # Features section
-    st.markdown("""
-        <div class="custom-card">
-            <h2 style='color: #667eea; margin-bottom: 1.5rem;'>✨ Key Features</h2>
-            <div style='display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem;'>
-                <div>
-                    <h4>🤖 AI-Powered Analysis</h4>
-                    <p style='color: #666;'>Advanced machine learning algorithms analyze your resume</p>
+    features = [
+        ("🔍", "Smart Resume Analysis", "AI-powered analysis with RAG technology"),
+        ("⚡", "Instant Job Matching", "Real-time comparison with job descriptions"),
+        ("💬", "Career Guidance", "24/7 AI advisor for career questions"),
+    ]
+    
+    for idx, (icon, title, desc) in enumerate(features):
+        with [col1, col2, col3][idx]:
+            st.markdown(f"""
+                <div class="modern-card" style="text-align: center;">
+                    <div style="font-size: 2.5rem; margin-bottom: 1rem;">{icon}</div>
+                    <h3 style="margin: 1rem 0 0.5rem; font-size: 1.1rem;">{title}</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0;">{desc}</p>
                 </div>
-                <div>
-                    <h4>⚡ Instant Results</h4>
-                    <p style='color: #666;'>Get immediate feedback and recommendations</p>
+            """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
+        
+        with tab1:
+            st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+            with st.form("login_form", clear_on_submit=True):
+                email = st.text_input("📧 Email", placeholder="your@email.com")
+                password = st.text_input("🔒 Password", type="password", placeholder="Enter password")
+                submit = st.form_submit_button("🚀 Login", use_container_width=True, type="primary")
+                
+                if submit:
+                    if not email or not password:
+                        st.error("❌ Please fill in all fields")
+                    else:
+                        with st.spinner("Authenticating..."):
+                            response = api_call("POST", "/login", 
+                                              data={"username": email, "password": password})
+                            
+                            if response and response.status_code == 200:
+                                data = response.json()
+                                st.session_state.authenticated = True
+                                st.session_state.access_token = data.get('access_token')
+                                st.session_state.user_data = {
+                                    'user_id': data.get('user_id'),
+                                    'username': data.get('username'),
+                                    'email': data.get('email')
+                                }
+                                st.success("✅ Login successful!")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error("❌ Invalid email or password")
+        
+        with tab2:
+            st.markdown("<div style='height: 1rem;'></div>", unsafe_allow_html=True)
+            with st.form("register_form", clear_on_submit=True):
+                reg_email = st.text_input("📧 Email", placeholder="your@email.com", key="reg_email")
+                reg_username = st.text_input("👤 Username", placeholder="Choose username", key="reg_username")
+                reg_password = st.text_input("🔒 Password", type="password", placeholder="Min 6 characters", key="reg_password")
+                reg_confirm = st.text_input("🔒 Confirm Password", type="password", placeholder="Re-enter password", key="reg_confirm")
+                
+                submit = st.form_submit_button("🎉 Create Account", use_container_width=True, type="primary")
+                
+                if submit:
+                    if not reg_email or not reg_username or not reg_password:
+                        st.error("❌ Please fill in all required fields")
+                    elif reg_password != reg_confirm:
+                        st.error("❌ Passwords don't match")
+                    elif len(reg_password) < 6:
+                        st.error("❌ Password must be at least 6 characters")
+                    else:
+                        with st.spinner("Creating account..."):
+                            response = api_call("POST", "/register",
+                                              json={
+                                                  "email": reg_email,
+                                                  "username": reg_username,
+                                                  "password": reg_password
+                                              })
+                            
+                            if response and response.status_code == 200:
+                                data = response.json()
+                                st.session_state.authenticated = True
+                                st.session_state.access_token = data.get('access_token')
+                                st.session_state.user_data = {
+                                    'user_id': data.get('user_id'),
+                                    'username': data.get('username'),
+                                    'email': data.get('email')
+                                }
+                                st.success("🎉 Account created!")
+                                st.balloons()
+                                st.rerun()
+                            else:
+                                st.error("❌ Registration failed. Email may already exist.")
+
+
+# ==================== HOME PAGE ====================
+def show_home_page():
+    """Dashboard home page with gamified scoring"""
+    
+    st.markdown(f"""
+        <div style="margin-bottom: 3rem;">
+            <h1 style="font-size: 2.5rem; margin-bottom: 0.5rem;">
+                👋 Welcome back, <span style="color: var(--primary);">{st.session_state.user_data['username']}</span>
+            </h1>
+            <p style="color: var(--text-muted); font-size: 1.05rem;">
+                Let's advance your career journey today.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Get resume count
+    response = api_call("GET", "/my-resumes")
+    if response and response.status_code == 200:
+        resumes_data = response.json()
+        resume_count = resumes_data.get("count", 0)
+    else:
+        resume_count = 0
+    
+    # ==================== GAMIFIED CAREER READINESS SCORE ====================
+    profile_score = 0
+    tier = "🌱 Beginner"
+    tier_color = "#94a3b8"
+    tier_emoji = "🌱"
+    next_goal = "Upload your first resume to begin your journey"
+
+    # Level 1: Getting Started (0-25)
+    if resume_count > 0:
+        profile_score = 15
+        tier = "🌱 Getting Started"
+        tier_color = "#94a3b8"
+        tier_emoji = "🌱"
+        next_goal = "Complete 1 job match to reach Active Job Seeker"
+        
+        if st.session_state.resume_data:
+            skills = len(st.session_state.resume_data.get('skills', []))
+            if skills >= 5:
+                profile_score = 25
+                next_goal = "Complete 3 job matches to reach Active Job Seeker"
+
+    # Level 2: Active Job Seeker (26-50)
+    if st.session_state.match_count > 0:
+        profile_score = 35
+        tier = "📈 Active Job Seeker"
+        tier_color = "#6366f1"
+        tier_emoji = "📈"
+        next_goal = "Complete 3 career advice queries to reach Career Optimizer"
+        
+        if st.session_state.match_count >= 3:
+            profile_score = 45
+            next_goal = "Use career advice 3 times to level up"
+        if st.session_state.match_count >= 5:
+            profile_score = 50
+            next_goal = "Keep exploring career advice to level up"
+
+    # Level 3: Career Optimizer (51-75)
+    if st.session_state.advice_count > 0:
+        profile_score = max(profile_score, 55)
+        tier = "⭐ Career Optimizer"
+        tier_color = "#06b6d4"
+        tier_emoji = "⭐"
+        next_goal = "Upload 2+ resumes and complete 5+ matches to reach Power User"
+        
+        if st.session_state.advice_count >= 3:
+            profile_score = 65
+            next_goal = "Complete 5 job matches to reach Power User"
+        if st.session_state.advice_count >= 5:
+            profile_score = 75
+            next_goal = "Upload multiple resumes and get 5+ job matches"
+
+    # Level 4: Power User (76-100)
+    if resume_count >= 2 and st.session_state.match_count >= 5 and st.session_state.advice_count >= 5:
+        profile_score = 85
+        tier = "🔥 Power User"
+        tier_color = "#f59e0b"
+        tier_emoji = "🔥"
+        next_goal = "Get 15+ skills and 3+ domains to reach Expert"
+        
+        # Bonus: High quality resume
+        if st.session_state.resume_data:
+            skills = len(st.session_state.resume_data.get('skills', []))
+            domains = len(st.session_state.resume_data.get('domains', []))
+            if skills >= 15 and domains >= 3:
+                profile_score = 95
+                tier = "🚀 Career Expert"
+                tier_color = "#10b981"
+                tier_emoji = "🚀"
+                next_goal = "Achieve 80%+ job match score to reach Master"
+            
+            # Ultimate bonus: Strong job matches
+            if st.session_state.best_match_score >= 80:
+                profile_score = 100
+                tier = "🏆 Career Master"
+                tier_color = "gold"
+                tier_emoji = "🏆"
+                next_goal = "You've mastered Career Compass! 🎉"
+
+    profile_score = round(profile_score, 1)
+    
+    # ==================== DASHBOARD METRICS ====================
+    col1, col2, col3 = st.columns(3, gap="medium")
+    
+    with col1:
+        st.markdown(f"""
+            <div class="modern-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 0.5rem 0;">Total Resumes</p>
+                        <h2 style="color: var(--primary); font-size: 2.5rem; margin: 0;">{resume_count}</h2>
+                    </div>
+                    <div style="font-size: 2rem;">📄</div>
                 </div>
-                <div>
-                    <h4>🎯 Skill Matching</h4>
-                    <p style='color: #666;'>Compare your skills with job requirements</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+            <div class="modern-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div style="flex: 1;">
+                        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 0.5rem 0;">Career Readiness</p>
+                        <h2 style="color: {tier_color}; font-size: 2.5rem; margin: 0 0 0.5rem 0;">{profile_score}</h2>
+                        <div style="background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; overflow: hidden;">
+                            <div style="background: {tier_color}; height: 100%; width: {profile_score}%; transition: width 0.3s ease;"></div>
+                        </div>
+                        <p style="color: {tier_color}; font-size: 0.85rem; margin: 0.5rem 0 0 0; font-weight: 600;">{tier}</p>
+                    </div>
+                    <div style="font-size: 2rem;">{tier_emoji}</div>
                 </div>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        ai_sessions = st.session_state.match_count + st.session_state.advice_count
+        st.markdown(f"""
+            <div class="modern-card">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div>
+                        <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0 0 0.5rem 0;">AI Sessions</p>
+                        <h2 style="color: var(--success); font-size: 2.5rem; margin: 0;">{ai_sessions}</h2>
+                    </div>
+                    <div style="font-size: 2rem;">💬</div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # ✅ Progress to Next Level
+    if profile_score < 100:
+        st.markdown(f"""
+            <div class="modern-card" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(236, 72, 153, 0.1));">
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                    <div style="font-size: 2rem;">🎯</div>
+                    <div>
+                        <p style="color: var(--text-muted); font-size: 0.85rem; margin: 0;">Next Goal</p>
+                        <p style="color: var(--text-primary); font-size: 1rem; margin: 0.3rem 0 0 0; font-weight: 500;">{next_goal}</p>
+                    </div>
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+            <div class="modern-card" style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(245, 158, 11, 0.2)); text-align: center;">
+                <h3 style="margin: 0; color: gold;">🏆 Congratulations! You're a Career Master! 🏆</h3>
+                <p style="margin: 0.5rem 0 0 0; color: var(--text-muted);">You've mastered all features of Career Compass!</p>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    col1, col2 = st.columns(2, gap="large")
+    
+    with col1:
+        st.markdown("<h3 style='margin: 0 0 1rem 0;'>⚡ Quick Start</h3>", unsafe_allow_html=True)
+        if st.button("📄 Upload Resume", use_container_width=True):
+            smooth_transition("📄 Upload Resume")
+        if st.button("🎯 Find Jobs", use_container_width=True):
+            smooth_transition("🎯 Job Match")
+        if st.button("💬 Ask AI Advisor", use_container_width=True):
+            smooth_transition("💬 Career Advice")
+    
+    with col2:
+        st.markdown("<h3 style='margin: 0 0 1rem 0;'>📊 Tips</h3>", unsafe_allow_html=True)
+        st.markdown("""
+            <div class="modern-card">
+                <p style="margin: 0.5rem 0; font-size: 0.9rem;">• Keep your resume updated regularly</p>
+                <p style="margin: 0.5rem 0; font-size: 0.9rem;">• Match with multiple job descriptions</p>
+                <p style="margin: 0.5rem 0; font-size: 0.9rem;">• Ask specific career questions</p>
+            </div>
+        """, unsafe_allow_html=True)
+
+
+# ==================== UPLOAD RESUME PAGE ====================
+def show_upload_page():
+    """Resume upload page"""
+    
+    st.markdown("<h1 style='margin-bottom: 1rem;'>📄 Upload Your Resume</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-muted); margin-bottom: 2rem;'>Upload a PDF or DOCX file for AI-powered analysis.</p>", unsafe_allow_html=True)
+    
+    uploaded_file = st.file_uploader("Choose file", type=['pdf', 'docx'], help="Max 10MB")
+    
+    if uploaded_file:
+        st.markdown(f"""
+            <div class="modern-card">
+                <p style="margin: 0; color: var(--text-muted);"><strong>Selected:</strong> {uploaded_file.name}</p>
+                <p style="margin: 0.5rem 0 0 0; color: var(--text-muted); font-size: 0.9rem;">{uploaded_file.size / 1024:.1f} KB</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🚀 Analyze Resume", use_container_width=True, type="primary"):
+            with st.spinner("🤖 AI is analyzing your resume..."):
+                files = {"file": (uploaded_file.name, uploaded_file, uploaded_file.type)}
+                response = api_call("POST", "/upload-resume", files=files)
+                
+                if response and response.status_code == 200:
+                    data = response.json()
+                    st.session_state.resume_id = data.get('resume_id')
+                    st.session_state.resume_data = data
+                    st.success("✅ Resume analyzed successfully!")
+                    st.balloons()
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("🎯 Skills Found", len(data.get('skills', [])))
+                    
+                    with col2:
+                        st.metric("🏢 Career Domains", len(data.get('domains', [])))
+                    
+                    with col3:
+                        st.metric("📝 Text Length", f"{len(data.get('extracted_text', ''))} chars")
+                    
+                    if data.get('skills'):
+                        st.markdown("<br><h3>💼 Extracted Skills</h3>", unsafe_allow_html=True)
+                        skills_html = " ".join([
+                            f"<span style='display: inline-block; background: rgba(99, 102, 241, 0.2); color: var(--primary); padding: 0.4rem 0.8rem; border-radius: 20px; margin: 0.2rem; font-size: 0.9rem; border: 1px solid var(--primary);'>{skill}</span>"
+                            for skill in data.get('skills', [])
+                        ])
+                        st.markdown(skills_html, unsafe_allow_html=True)
+                    
+                    if data.get('domains'):
+                        st.markdown("<br><h3>🎯 Career Domains</h3>", unsafe_allow_html=True)
+                        for domain in data.get('domains', []):
+                            st.success(f"✓ {domain.replace('_', ' ').title()}")
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🎯 Match with Jobs", use_container_width=True):
+                            smooth_transition("🎯 Job Match")
+                    with col2:
+                        if st.button("💬 Get Career Advice", use_container_width=True):
+                            smooth_transition("💬 Career Advice")
+                else:
+                    st.error("❌ Failed to analyze resume. Please try again.")
+
+
+# ==================== JOB MATCH PAGE ====================
+def show_job_match_page():
+    """Job matching page"""
+    
+    st.markdown("<h1 style='margin-bottom: 1rem;'>🎯 Job Match Analysis</h1>", unsafe_allow_html=True)
+    
+    if not st.session_state.resume_id:
+        st.warning("⚠️ Please upload a resume first to use this feature.")
+        if st.button("📄 Go to Upload Resume"):
+            smooth_transition("📄 Upload Resume")
+        st.stop()
+    
+    st.markdown(f"""
+        <div class="modern-card">
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <div style="background: rgba(99, 102, 241, 0.1); padding: 0.8rem; border-radius: 10px; font-size: 1.5rem;">📄</div>
                 <div>
-                    <h4>💡 Career Guidance</h4>
-                    <p style='color: #666;'>Personalized advice for career growth</p>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Active Resume</p>
+                    <p style="margin: 0; color: var(--text-primary); font-weight: 600;">Resume ID: {st.session_state.resume_id[:16]}...</p>
                 </div>
             </div>
         </div>
     """, unsafe_allow_html=True)
     
-    # Quick Start
-    st.markdown("""
-        <div class="custom-card">
-            <h2 style='color: #667eea; margin-bottom: 1rem;'>🚀 Quick Start Guide</h2>
-            <ol style='color: #666; font-size: 1.1rem; line-height: 2;'>
-                <li>Click on <strong>📄 Upload Resume</strong> in the sidebar</li>
-                <li>Upload your PDF or DOCX resume</li>
-                <li>View your skill analysis and career domains</li>
-                <li>Try <strong>🎯 Job Match</strong> to compare with job descriptions</li>
-                <li>Ask questions in <strong>💬 Career Advice</strong> for personalized guidance</li>
-            </ol>
-        </div>
-    """, unsafe_allow_html=True)
-
-# Upload Resume Page
-elif page == "📄 Upload Resume":
-    st.markdown("<div class='custom-card fade-in'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color: #667eea;'>📄 Upload Your Resume</h2>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns([2, 1])
+    job_desc = st.text_area(
+        "📋 Job Description",
+        height=250,
+        placeholder="Paste the complete job description here including:\n- Job title\n- Required skills\n- Responsibilities\n- Qualifications",
+        help="The more details you provide, the better the match analysis"
+    )
     
-    with col1:
-        st.markdown("### 📎 Choose Your File")
-        uploaded_file = st.file_uploader(
-            "Drag and drop or click to upload",
-            type=['pdf', 'docx'],
-            help="Supported formats: PDF, DOCX (Max 10MB)",
-            label_visibility="collapsed"
-        )
-        
-        if uploaded_file is not None:
-            st.success(f"✅ File selected: {uploaded_file.name}")
-            
-            if st.button("🚀 Analyze Resume", type="primary", use_container_width=True):
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                
-                status_text.text("📤 Uploading resume...")
-                progress_bar.progress(25)
-                
-                try:
-                    files = {'file': (uploaded_file.name, uploaded_file, uploaded_file.type)}
-                    response = requests.post(f"{API_URL}/upload-resume", files=files)
-                    
-                    progress_bar.progress(50)
-                    status_text.text("🔍 Analyzing content...")
-                    
-                    if response.status_code == 200:
-                        progress_bar.progress(75)
-                        status_text.text("✨ Processing results...")
-                        
-                        data = response.json()
-                        st.session_state.resume_id = data['resume_id']
-                        st.session_state.resume_data = data
-                        
-                        progress_bar.progress(100)
-                        status_text.text("✅ Analysis complete!")
-                        
-                        st.balloons()
-                        
-                        # Results
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown("### 📊 Analysis Results")
-                        
-                        # Metrics
-                        col_a, col_b, col_c = st.columns(3)
-                        with col_a:
-                            st.metric("🎯 Skills Found", len(data['skills']))
-                        with col_b:
-                            st.metric("🏢 Career Domains", len(data['domains']))
-                        with col_c:
-                            st.metric("📝 Characters", len(data['extracted_text']))
-                        
-                        # Skills visualization
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown("### 💼 Your Skills")
-                        
-                        skills_html = "".join([f"<span class='skill-tag'>{skill}</span>" for skill in data['skills']])
-                        st.markdown(skills_html, unsafe_allow_html=True)
-                        
-                        # Domains
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown("### 🎯 Career Domains")
-                        
-                        for domain in data['domains']:
-                            domain_name = domain.replace('_', ' ').title()
-                            if domain == 'software_engineering':
-                                st.success(f"💻 {domain_name}")
-                            elif domain == 'data_science':
-                                st.info(f"📊 {domain_name}")
-                            else:
-                                st.warning(f"🌐 {domain_name}")
-                        
-                        # Text preview
-                        with st.expander("📄 View Extracted Text"):
-                            st.text_area("", data['extracted_text'], height=200, disabled=True, label_visibility="collapsed")
-                    
-                    else:
-                        st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
-                
-                except Exception as e:
-                    st.error(f"❌ Connection error: {str(e)}")
-                    st.info("💡 Make sure your API is running at http://127.0.0.1:8000")
-    
-    with col2:
-        st.markdown("### 💡 Tips for Best Results")
-        st.info("✓ Use a well-structured resume")
-        st.info("✓ List skills clearly in a dedicated section")
-        st.info("✓ PDF format works best")
-        st.info("✓ Include work experience and projects")
-        st.info("✓ Keep file size under 10MB")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("### 📈 What We Analyze")
-        st.success("✓ Technical skills")
-        st.success("✓ Programming languages")
-        st.success("✓ Tools & frameworks")
-        st.success("✓ Career domains")
-        st.success("✓ Experience level")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# Job Match Page
-elif page == "🎯 Job Match":
-    if not st.session_state.resume_id:
-        st.warning("⚠️ Please upload a resume first!")
-        if st.button("📄 Go to Upload", type="primary"):
-            st.rerun()
-    else:
-        st.markdown("<div class='custom-card fade-in'>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color: #667eea;'>🎯 Job Match Analysis</h2>", unsafe_allow_html=True)
-        
-        st.success(f"✅ Using resume: {st.session_state.resume_id[:20]}...")
-        
-        # Sample templates
-        sample_jobs = {
-            "🚀 Full Stack Developer": "We are seeking a Full Stack Developer with 2+ years of experience. Required skills: Python, Django/Flask, JavaScript, React, PostgreSQL, REST APIs, Git, and Docker. Experience with AWS or Azure is a plus. You will build scalable web applications, work with cross-functional teams, and implement CI/CD pipelines.",
-            "🐍 Backend Python Developer": "Looking for a Backend Python Developer. Must have: Python 3.x, FastAPI or Django, SQL databases (PostgreSQL/MySQL), Redis, Docker, Kubernetes, microservices architecture, unit testing, and RESTful API design. Bonus: GraphQL, message queues, and cloud platforms.",
-            "🌱 Junior Software Engineer": "Junior Software Engineer position for recent graduates or those with 0-2 years experience. We need: strong fundamentals in Python or Java, understanding of data structures and algorithms, basic HTML/CSS/JavaScript knowledge, Git version control, and eagerness to learn.",
-            "☁️ DevOps Engineer": "DevOps Engineer needed to manage our cloud infrastructure. Requirements: Docker, Kubernetes, Jenkins/GitLab CI, Terraform, AWS (EC2, S3, Lambda), monitoring tools (Prometheus, Grafana), bash scripting, Python automation, and Linux administration.",
-            "✏️ Custom Job Description": ""
-        }
-        
-        st.markdown("### 📝 Job Description")
-        job_type = st.selectbox("Choose a template:", list(sample_jobs.keys()), label_visibility="collapsed")
-        
-        if "Custom" in job_type:
-            job_description = st.text_area(
-                "Paste the job description",
-                height=250,
-                placeholder="Paste the complete job description here...",
-            )
+    if st.button("🚀 Analyze Match", use_container_width=True, type="primary"):
+        if not job_desc or len(job_desc.strip()) < 50:
+            st.error("❌ Please provide a detailed job description (at least 50 characters)")
         else:
-            job_description = st.text_area(
-                "Job Description",
-                value=sample_jobs[job_type],
-                height=250,
-                label_visibility="collapsed"
-            )
-        
-        if st.button("🔍 Analyze Match", type="primary", disabled=not job_description, use_container_width=True):
-            with st.spinner("🤖 AI is analyzing the match..."):
-                try:
-                    payload = {
-                        "resume_id": st.session_state.resume_id,
-                        "job_description": job_description
-                    }
-                    response = requests.post(f"{API_URL}/job-match", json=payload)
+            with st.spinner("⚙️ AI is comparing your profile with the job..."):
+                payload = {
+                    "resume_id": st.session_state.resume_id,
+                    "job_description": job_desc.strip()
+                }
+                response = api_call("POST", "/job-match", json=payload)
+                
+                if response and response.status_code == 200:
+                    result = response.json()
+                    st.session_state.job_match_result = result
+                    st.session_state.match_count += 1
                     
-                    if response.status_code == 200:
-                        data = response.json()
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        # Match Score Gauge
-                        score = data['match_score']
-                        
-                        fig = go.Figure(go.Indicator(
-                            mode="gauge+number+delta",
-                            value=score,
-                            domain={'x': [0, 1], 'y': [0, 1]},
-                            title={'text': "Match Score", 'font': {'size': 24}},
-                            delta={'reference': 70, 'increasing': {'color': "green"}},
-                            gauge={
-                                'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-                                'bar': {'color': "darkblue"},
-                                'bgcolor': "white",
-                                'borderwidth': 2,
-                                'bordercolor': "gray",
-                                'steps': [
-                                    {'range': [0, 50], 'color': '#ffebee'},
-                                    {'range': [50, 75], 'color': '#fff9c4'},
-                                    {'range': [75, 100], 'color': '#c8e6c9'}
-                                ],
-                                'threshold': {
-                                    'line': {'color': "red", 'width': 4},
-                                    'thickness': 0.75,
-                                    'value': 90
-                                }
-                            }
-                        ))
-                        
-                        fig.update_layout(
-                            paper_bgcolor="white",
-                            font={'color': "darkblue", 'family': "Arial"},
-                            height=300
-                        )
-                        
-                        st.plotly_chart(fig, use_container_width=True)
-                        
-                        # Match interpretation
-                        if score >= 80:
-                            st.success("🎉 Excellent Match! You're a strong candidate for this role.")
-                        elif score >= 60:
-                            st.info("👍 Good Match! You have most of the required skills with some gaps to fill.")
+                    # ✅ Track match scores for gamification
+                    match_score = result.get('match_score', 0)
+                    st.session_state.match_scores.append(match_score)
+                    st.session_state.avg_match_score = sum(st.session_state.match_scores) / len(st.session_state.match_scores)
+                    st.session_state.best_match_score = max(st.session_state.match_scores)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    if match_score >= 80:
+                        score_color = "var(--success)"
+                        score_message = "🎉 Excellent Match! You're a strong candidate."
+                    elif match_score >= 60:
+                        score_color = "#06b6d4"
+                        score_message = "👍 Good Match! Some skill gaps to address."
+                    else:
+                        score_color = "var(--warning)"
+                        score_message = "📝 Partial Match. Consider upskilling."
+                    
+                    st.markdown(f"""
+                        <div class="modern-card" style="text-align: center; background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(236, 72, 153, 0.1));">
+                            <h2 style="margin: 0 0 1rem 0;">Match Score</h2>
+                            <div style="font-size: 4rem; color: {score_color}; font-weight: 800; margin: 1rem 0;">{match_score}%</div>
+                            <p style="margin: 0; font-size: 1.1rem;">{score_message}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2, gap="large")
+                    
+                    with col1:
+                        st.markdown("<h3>✅ Matching Skills</h3>", unsafe_allow_html=True)
+                        matching = result.get('matched_skills', [])
+                        if matching:
+                            for skill in matching:
+                                st.markdown(f"""
+                                    <div style='background: rgba(16, 185, 129, 0.1); padding: 0.5rem 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid var(--success);'>
+                                        ✓ {skill}
+                                    </div>
+                                """, unsafe_allow_html=True)
                         else:
-                            st.warning("📝 Partial Match. Consider developing the missing skills.")
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        # Skills comparison
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown("### ✅ Your Matching Skills")
-                            if data['matched_skills']:
-                                for skill in data['matched_skills']:
-                                    st.markdown(f"✓ **{skill}**")
-                            else:
-                                st.info("See recommendations for details")
-                        
-                        with col2:
-                            st.markdown("### 📚 Skills to Develop")
-                            if data['missing_skills']:
-                                for skill in data['missing_skills']:
-                                    st.markdown(f"○ {skill}")
-                            else:
-                                st.success("🎉 You have all the required skills!")
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        
-                        # Recommendations
-                        st.markdown("### 💡 Detailed Recommendations")
-                        st.info(data['recommendations'])
+                            st.info("No exact skill matches found")
                     
-                    else:
-                        st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
-                
-                except Exception as e:
-                    st.error(f"❌ Connection error: {str(e)}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# Career Advice Page
-elif page == "💬 Career Advice":
-    if not st.session_state.resume_id:
-        st.warning("⚠️ Please upload a resume first!")
-        if st.button("📄 Go to Upload", type="primary"):
-            st.rerun()
-    else:
-        st.markdown("<div class='custom-card fade-in'>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color: #667eea;'>💬 AI Career Advisor</h2>", unsafe_allow_html=True)
-        
-        st.success(f"✅ Analyzing resume: {st.session_state.resume_id[:20]}...")
-        
-        # Sample questions
-        sample_questions = {
-            "🎯 Becoming a Senior Developer": "I want to become a senior software developer. What skills should I focus on learning in the next 6 months? Should I specialize or stay full-stack?",
-            "🤖 ML/AI Career Transition": "How can I transition from web development to machine learning and AI? What courses, certifications, and projects would you recommend?",
-            "💼 Interview Preparation": "I have an interview for a Python backend developer position next week. What technical topics should I review and what projects should I highlight?",
-            "💰 Salary & Compensation": "Based on my skills and experience, what salary range should I expect for software developer roles? How can I increase my market value?",
-            "🚀 Career Path Planning": "What are the typical career progression paths for a software developer? Should I aim for tech lead, architect, or management?",
-            "✏️ Ask Your Own Question": ""
-        }
-        
-        st.markdown("### 🤔 What would you like to know?")
-        question_type = st.selectbox("Choose a topic:", list(sample_questions.keys()), label_visibility="collapsed")
-        
-        if "Your Own" in question_type:
-            query = st.text_area(
-                "Your question",
-                height=150,
-                placeholder="Ask anything about your career, skills, job search, salary, or professional development...",
-                label_visibility="collapsed"
-            )
-        else:
-            query = st.text_area(
-                "Your question",
-                value=sample_questions[question_type],
-                height=150,
-                label_visibility="collapsed"
-            )
-        
-        if st.button("💡 Get AI Advice", type="primary", disabled=not query, use_container_width=True):
-            with st.spinner("🤖 AI is thinking... This may take a moment."):
-                try:
-                    payload = {
-                        "resume_id": st.session_state.resume_id,
-                        "query": query
-                    }
-                    response = requests.post(f"{API_URL}/career-advice", json=payload)
+                    with col2:
+                        st.markdown("<h3>📚 Skills to Develop</h3>", unsafe_allow_html=True)
+                        missing = result.get('missing_skills', [])
+                        if missing:
+                            for skill in missing:
+                                st.markdown(f"""
+                                    <div style='background: rgba(245, 158, 11, 0.1); padding: 0.5rem 1rem; border-radius: 8px; margin: 0.5rem 0; border-left: 3px solid var(--warning);'>
+                                        ○ {skill}
+                                    </div>
+                                """, unsafe_allow_html=True)
+                        else:
+                            st.success("🎉 All required skills matched!")
                     
-                    if response.status_code == 200:
-                        data = response.json()
-                        
-                        st.markdown("<br>", unsafe_allow_html=True)
-                        st.markdown("### 💡 Personalized Career Advice")
-                        
-                        # Display advice in a nice card
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    with st.expander("💡 AI Recommendations", expanded=True):
                         st.markdown(f"""
-                            <div style='background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%); 
-                                        padding: 2rem; 
-                                        border-radius: 15px; 
-                                        border-left: 5px solid #667eea;
-                                        margin: 1rem 0;'>
-                                {data['answer'].replace(chr(10), '<br>')}
+                            <div style='background: rgba(99, 102, 241, 0.05); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--primary);'>
+                                <p style='margin: 0; line-height: 1.8;'>{result.get('recommendations', 'No recommendations available.')}</p>
                             </div>
                         """, unsafe_allow_html=True)
-                        
-                        # Context used
-                        with st.expander("📚 Context & Sources Used"):
-                            st.info(f"The AI analyzed {len(data['relevant_context'])} sections of your resume to provide this advice.")
-                            for i, context in enumerate(data['relevant_context'], 1):
-                                st.text_area(
-                                    f"Resume Section {i}",
-                                    context[:300] + "..." if len(context) > 300 else context,
-                                    height=100,
-                                    disabled=True
-                                )
-                    
-                    else:
-                        st.error(f"❌ Error: {response.json().get('detail', 'Unknown error')}")
-                
-                except Exception as e:
-                    st.error(f"❌ Connection error: {str(e)}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+                else:
+                    st.error("❌ Failed to analyze match. Please try again.")
 
-# My Resumes Page
-elif page == "📁 My Resumes":
-    st.markdown("<div class='custom-card fade-in'>", unsafe_allow_html=True)
-    st.markdown("<h2 style='color: #667eea;'>📁 Resume Management</h2>", unsafe_allow_html=True)
+
+# ==================== CAREER ADVICE PAGE ====================
+def show_career_advice_page():
+    """AI career advisor page"""
+    
+    st.markdown("<h1 style='margin-bottom: 1rem;'>💬 AI Career Advisor</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-muted); margin-bottom: 2rem;'>Ask questions about your career path and get personalized advice.</p>", unsafe_allow_html=True)
+    
+    if not st.session_state.resume_id:
+        st.warning("⚠️ Please upload a resume to get personalized advice.")
+        if st.button("📄 Go to Upload Resume"):
+            smooth_transition("📄 Upload Resume")
+        st.stop()
+    
+    st.markdown("<h3>💡 Sample Questions</h3>", unsafe_allow_html=True)
+    sample_questions = [
+        "How can I become a senior software developer?",
+        "What skills should I learn for machine learning roles?",
+        "How do I transition from web development to data science?",
+        "What certifications would help my career?",
+    ]
+    
+    cols = st.columns(2)
+    for idx, question in enumerate(sample_questions):
+        with cols[idx % 2]:
+            if st.button(f"💬 {question}", key=f"sample_{idx}", use_container_width=True):
+                st.session_state.messages.append({"role": "user", "content": question})
+                st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"], avatar="🧭" if message["role"] == "assistant" else "👤"):
+            st.markdown(message["content"])
+    
+    if prompt := st.chat_input("Ask me anything about your career..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        with st.chat_message("user", avatar="👤"):
+            st.markdown(prompt)
+        
+        with st.chat_message("assistant", avatar="🧭"):
+            with st.spinner("🤔 AI is thinking..."):
+                payload = {
+                    "resume_id": st.session_state.resume_id,
+                    "query": prompt
+                }
+                response = api_call("POST", "/career-advice", json=payload)
+                
+                if response and response.status_code == 200:
+                    answer = response.json().get('answer', 'No response generated.')
+                    st.markdown(answer)
+                    st.session_state.messages.append({"role": "assistant", "content": answer})
+                    st.session_state.advice_count += 1
+                else:
+                    error_msg = "❌ Failed to get response. Please try again."
+                    st.error(error_msg)
+
+
+# ==================== MY RESUMES PAGE ====================
+def show_resumes_page():
+    """Resume history page"""
+    
+    st.markdown("<h1 style='margin-bottom: 1rem;'>📁 My Resumes</h1>", unsafe_allow_html=True)
+    
+    if not st.session_state.access_token:
+        st.warning("🔒 Please login to view your resumes")
+        if st.button("🔑 Go to Login", use_container_width=True):
+            st.session_state.authenticated = False
+            st.rerun()
+        return
     
     col1, col2 = st.columns([3, 1])
     with col2:
         if st.button("🔄 Refresh", use_container_width=True):
             st.rerun()
     
-    try:
-        response = requests.get(f"{API_URL}/resumes")
+    response = api_call("GET", "/my-resumes")
+    
+    if response and response.status_code == 200:
+        resumes = response.json().get('resumes', [])
         
-        if response.status_code == 200:
-            data = response.json()
-            
-            st.metric("📊 Total Resumes", data['count'])
-            
-            if data['count'] > 0:
-                st.markdown("<br>", unsafe_allow_html=True)
-                
-                for resume in data['resumes']:
-                    with st.expander(f"📄 Resume {resume['resume_id'][:16]}...", expanded=False):
-                        col_a, col_b, col_c = st.columns([2, 2, 1])
-                        
-                        with col_a:
-                            st.metric("Skills", resume['skills_count'])
-                        
-                        with col_b:
-                            domains_str = ', '.join([d.replace('_', ' ').title() for d in resume['domains']])
-                            st.write(f"**Domains:** {domains_str}")
-                        
-                        with col_c:
-                            if st.button("🗑️ Delete", key=resume['resume_id'], type="secondary"):
-                                del_response = requests.delete(f"{API_URL}/resume/{resume['resume_id']}")
-                                if del_response.status_code == 200:
-                                    st.success("✅ Deleted!")
-                                    st.rerun()
-                                else:
-                                    st.error("❌ Failed to delete")
-            else:
-                st.info("📭 No resumes uploaded yet. Upload your first resume to get started!")
+        st.metric("📊 Total Resumes", len(resumes))
+        st.markdown("<br>", unsafe_allow_html=True)
         
+        if not resumes:
+            st.info("📭 No resumes uploaded yet. Start by uploading your first resume!")
+            if st.button("📄 Upload Resume", use_container_width=True):
+                smooth_transition("📄 Upload Resume")
         else:
-            st.error("❌ Error fetching resumes")
+            for resume in resumes:
+                st.markdown(f"""
+                    <div class="modern-card">
+                        <div style="display: flex; gap: 1.5rem; align-items: center;">
+                            <div style="background: rgba(99, 102, 241, 0.1); padding: 1rem; border-radius: 12px; font-size: 1.5rem;">📄</div>
+                            <div style="flex: 1;">
+                                <h4 style="margin: 0 0 0.3rem 0;">{resume.get('filename', 'Resume')}</h4>
+                                <p style="margin: 0; font-size: 0.85rem; color: var(--text-muted);">
+                                    Uploaded: {resume.get('uploaded_at', 'N/A').split('T')[0]} • 
+                                    {resume.get('skills_count', 0)} skills
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+                
+                with col1:
+                    view_url = f"{API_URL}/resume/{resume.get('resume_id')}/view?token={st.session_state.access_token}"
+                    st.markdown(f"""
+                        <a href="{view_url}" target="_blank" style="
+                            display: block;
+                            padding: 0.5rem 1rem;
+                            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+                            color: white;
+                            text-decoration: none;
+                            border-radius: 8px;
+                            font-weight: 600;
+                            text-align: center;
+                            transition: transform 0.2s, box-shadow 0.2s;
+                            box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+                        " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.4)'" 
+                           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(16, 185, 129, 0.3)'">
+                            👁️ View
+                        </a>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if st.button("🎯 Use", key=f"use_{resume.get('resume_id')}", use_container_width=True):
+                        st.session_state.resume_id = resume.get('resume_id')
+                        st.session_state.resume_data = resume
+                        st.success("✅ Resume selected!")
+                        smooth_transition("🎯 Job Match")
+                
+                with col3:
+                    if st.button("🗑️ Delete", key=f"del_{resume.get('resume_id')}", use_container_width=True, type="secondary"):
+                        del_response = api_call("DELETE", f"/resume/{resume.get('resume_id')}")
+                        if del_response and del_response.status_code == 200:
+                            st.success("✅ Deleted!")
+                            st.rerun()
+                
+                with col4:
+                    st.write("")
+                
+                st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
     
-    except Exception as e:
-        st.error(f"❌ Connection error: {str(e)}")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
+    elif response and response.status_code == 401:
+        st.error("🔒 Session expired. Please login again.")
+        if st.button("🔑 Go to Login", use_container_width=True):
+            st.session_state.authenticated = False
+            for key in session_defaults.keys():
+                st.session_state[key] = session_defaults[key]
+            st.rerun()
+    else:
+        st.error("❌ Failed to load resumes.")
 
-# Footer
-st.markdown("""
-    <div class="footer">
-        <h3 style='color: #667eea;'>🧭 Career Compass</h3>
-        <p style='color: #666;'>Powered by FastAPI • Groq AI • FAISS • Streamlit</p>
-        <p style='color: #999; font-size: 0.9rem;'>Built with ❤️ by Pavithra R S</p>
-        <p style='color: #999; font-size: 0.8rem;'>© 2025 Career Compass. All rights reserved.</p>
-    </div>
-""", unsafe_allow_html=True)
+
+# ==================== MAIN APP ====================
+if not st.session_state.authenticated:
+    show_landing_page()
+else:
+    with st.sidebar:
+        st.markdown(f"""
+            <div style="text-align: center; padding: 1.5rem 0; border-bottom: 1px solid var(--border-color);">
+                <div style="background: linear-gradient(135deg, var(--primary), var(--primary-dark)); width: 50px; height: 50px; border-radius: 12px; margin: 0 auto 1rem; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.5rem;">
+                    {st.session_state.user_data['username'][0].upper()}
+                </div>
+                <h4 style="margin: 0 0 0.3rem 0;">{st.session_state.user_data['username']}</h4>
+                <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;">{st.session_state.user_data['email']}</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        menu_items = [
+            ("🏠 Home", "🏠 Home"),
+            ("📄 Upload Resume", "📄 Upload Resume"),
+            ("🎯 Job Match", "🎯 Job Match"),
+            ("💬 Career Advice", "💬 Career Advice"),
+            ("📁 My Resumes", "📁 My Resumes"),
+        ]
+        
+        for label, page in menu_items:
+            is_active = st.session_state.current_page == page
+            button_style = """
+                background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+                color: white;
+                border-left: 4px solid rgba(99, 102, 241, 0.8);
+            """ if is_active else """
+                background: transparent;
+                color: var(--text-secondary);
+            """
+            
+            if st.button(label, key=f"nav_{page}", use_container_width=True):
+                smooth_transition(page)
+        
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        
+        if st.button("🚪 Logout", use_container_width=True, type="secondary"):
+            for key in session_defaults.keys():
+                st.session_state[key] = session_defaults[key]
+            st.rerun()
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        
+        st.markdown("""
+        <div style='text-align: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);'>
+            <p style='color: var(--text-muted); font-size: 0.75rem; margin: 0;'>
+                Built with ❤️ by Pavithra R S
+            </p>
+            <p style='color: var(--text-muted); font-size: 0.7rem; margin: 0.3rem 0 0 0;'>
+                © 2025 Career Compass
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+        st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.session_state.current_page == "🏠 Home":
+        show_home_page()
+    elif st.session_state.current_page == "📄 Upload Resume":
+        show_upload_page()
+    elif st.session_state.current_page == "🎯 Job Match":
+        show_job_match_page()
+    elif st.session_state.current_page == "💬 Career Advice":
+        show_career_advice_page()
+    elif st.session_state.current_page == "📁 My Resumes":
+        show_resumes_page()
