@@ -14,11 +14,9 @@ class RAGService:
         self.settings = get_settings()
         if self.settings.groq_api_key:
             self.client = Groq(api_key=self.settings.groq_api_key)
-        elif self.settings.openai_api_key:
-            from openai import OpenAI
-            self.client = OpenAI(api_key=self.settings.openai_api_key)
+        
         else:
-            raise ValueError("API Key not found. Please set GROQ_API_KEY or OPENAI_API_KEY in .env")
+            raise ValueError("API Key not found. Please set GROQ_API_KEY in .env")
         
         self.embedding_service = EmbeddingService()
         self.vector_store = VectorStore()

@@ -105,7 +105,7 @@ st.markdown("""
         padding: 0 !important;
         opacity: 1 !important;
         visibility: visible !important;
-        pointer-events: auto !important;
+        pointer-events: all !important;
     }
 
     /* ✅ HAMBURGER BUTTON - When sidebar is CLOSED (open button) */
@@ -130,7 +130,7 @@ st.markdown("""
         padding: 0 !important;
         opacity: 1 !important;
         visibility: visible !important;
-        pointer-events: auto !important;
+        pointer-events: all !important;
     }
 
     /* ✅ Hover effect */
@@ -140,6 +140,11 @@ st.markdown("""
         box-shadow: 0 6px 30px rgba(99, 102, 241, 0.8) !important;
         background: linear-gradient(135deg, #4f46e5, #db2777) !important;
     }
+    /* ✅ IMPORTANT: Allow button content to be clickable */
+    [data-testid="collapsedControl"] *,
+    [data-testid="stSidebarCollapseButton"] * {
+        pointer-events: none !important; /* Disable pointer events on children only */
+}
 
     /* ✅ Hide default content but KEEP button clickable */
     [data-testid="collapsedControl"] > div,
@@ -173,7 +178,18 @@ st.markdown("""
         width: 100% !important;
         height: 100% !important;
     }
-    
+    /* ✅ HIDE "Press Enter to submit form" instruction */
+[data-testid="InputInstructions"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* Also hide for text input */
+.stTextInput [data-testid="InputInstructions"],
+.stTextArea [data-testid="InputInstructions"] {
+    display: none !important;
+}
+
     /* ✅ SIDEBAR STYLING */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(10, 14, 39, 0.98)) !important;
@@ -506,13 +522,42 @@ def show_home_page():
         </div>
     """, unsafe_allow_html=True)
     
+    # ✅ Fetch real counts from database
+    resume_count = 0
+    match_count = 0
+    advice_count = 0
+    best_match_score = 0
+    total_skills = 0
+    total_domains = 0
+    
     # Get resume count
-    response = api_call("GET", "/my-resumes")
-    if response and response.status_code == 200:
-        resumes_data = response.json()
+    resumes_response = api_call("GET", "/my-resumes")
+    if resumes_response and resumes_response.status_code == 200:
+        resumes_data = resumes_response.json()
         resume_count = resumes_data.get("count", 0)
-    else:
-        resume_count = 0
+        
+        # Get skills/domains from first resume if available
+        resumes_list = resumes_data.get("resumes", [])
+        if resumes_list and len(resumes_list) > 0:
+            first_resume = resumes_list[0]
+            total_skills = first_resume.get("skills_count", 0)
+    
+    # Get match history count
+    match_response = api_call("GET", "/match-history")
+    if match_response and match_response.status_code == 200:
+        matches_data = match_response.json()
+        matches_list = matches_data.get("matches", [])
+        match_count = len(matches_list)
+        
+        # Get best match score
+        if matches_list:
+            best_match_score = max([m.get('match_score', 0) for m in matches_list])
+    
+    # Get chat history count
+    chat_response = api_call("GET", "/chat-history")
+    if chat_response and chat_response.status_code == 200:
+        chats_data = chat_response.json()
+        advice_count = len(chats_data.get("chats", []))
     
     # ==================== GAMIFIED CAREER READINESS SCORE ====================
     profile_score = 0
@@ -529,68 +574,63 @@ def show_home_page():
         tier_emoji = "🌱"
         next_goal = "Complete 1 job match to reach Active Job Seeker"
         
-        if st.session_state.resume_data:
-            skills = len(st.session_state.resume_data.get('skills', []))
-            if skills >= 5:
-                profile_score = 25
-                next_goal = "Complete 3 job matches to reach Active Job Seeker"
+        if total_skills >= 5:
+            profile_score = 25
+            next_goal = "Complete 3 job matches to reach Active Job Seeker"
 
     # Level 2: Active Job Seeker (26-50)
-    if st.session_state.match_count > 0:
+    if match_count > 0:
         profile_score = 35
         tier = "📈 Active Job Seeker"
         tier_color = "#6366f1"
         tier_emoji = "📈"
         next_goal = "Complete 3 career advice queries to reach Career Optimizer"
         
-        if st.session_state.match_count >= 3:
+        if match_count >= 3:
             profile_score = 45
             next_goal = "Use career advice 3 times to level up"
-        if st.session_state.match_count >= 5:
+        if match_count >= 5:
             profile_score = 50
             next_goal = "Keep exploring career advice to level up"
 
     # Level 3: Career Optimizer (51-75)
-    if st.session_state.advice_count > 0:
+    if advice_count > 0:
         profile_score = max(profile_score, 55)
         tier = "⭐ Career Optimizer"
         tier_color = "#06b6d4"
         tier_emoji = "⭐"
         next_goal = "Upload 2+ resumes and complete 5+ matches to reach Power User"
         
-        if st.session_state.advice_count >= 3:
+        if advice_count >= 3:
             profile_score = 65
             next_goal = "Complete 5 job matches to reach Power User"
-        if st.session_state.advice_count >= 5:
+        if advice_count >= 5:
             profile_score = 75
             next_goal = "Upload multiple resumes and get 5+ job matches"
 
     # Level 4: Power User (76-100)
-    if resume_count >= 2 and st.session_state.match_count >= 5 and st.session_state.advice_count >= 5:
+    if resume_count >= 2 and match_count >= 5 and advice_count >= 5:
         profile_score = 85
         tier = "🔥 Power User"
         tier_color = "#f59e0b"
         tier_emoji = "🔥"
-        next_goal = "Get 15+ skills and 3+ domains to reach Expert"
+        next_goal = "Get 15+ skills to reach Expert"
         
         # Bonus: High quality resume
-        if st.session_state.resume_data:
-            skills = len(st.session_state.resume_data.get('skills', []))
-            domains = len(st.session_state.resume_data.get('domains', []))
-            if skills >= 15 and domains >= 3:
-                profile_score = 95
-                tier = "🚀 Career Expert"
-                tier_color = "#10b981"
-                tier_emoji = "🚀"
-                next_goal = "Achieve 80%+ job match score to reach Master"
-            
-            # Ultimate bonus: Strong job matches
-            if st.session_state.best_match_score >= 80:
-                profile_score = 100
-                tier = "🏆 Career Master"
-                tier_color = "gold"
-                tier_emoji = "🏆"
-                next_goal = "You've mastered Career Compass! 🎉"
+        if total_skills >= 15:
+            profile_score = 95
+            tier = "🚀 Career Expert"
+            tier_color = "#10b981"
+            tier_emoji = "🚀"
+            next_goal = "Achieve 80%+ job match score to reach Master"
+        
+        # Ultimate bonus: Strong job matches
+        if best_match_score >= 80:
+            profile_score = 100
+            tier = "🏆 Career Master"
+            tier_color = "gold"
+            tier_emoji = "🏆"
+            next_goal = "You've mastered Career Compass! 🎉"
 
     profile_score = round(profile_score, 1)
     
@@ -628,7 +668,7 @@ def show_home_page():
         """, unsafe_allow_html=True)
     
     with col3:
-        ai_sessions = st.session_state.match_count + st.session_state.advice_count
+        ai_sessions = match_count + advice_count
         st.markdown(f"""
             <div class="modern-card">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -683,7 +723,6 @@ def show_home_page():
                 <p style="margin: 0.5rem 0; font-size: 0.9rem;">• Ask specific career questions</p>
             </div>
         """, unsafe_allow_html=True)
-
 
 # ==================== UPLOAD RESUME PAGE ====================
 def show_upload_page():
@@ -870,61 +909,189 @@ def show_job_match_page():
 
 # ==================== CAREER ADVICE PAGE ====================
 def show_career_advice_page():
-    """AI career advisor page"""
+    """Career advice page with chat history"""
     
-    st.markdown("<h1 style='margin-bottom: 1rem;'>💬 AI Career Advisor</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color: var(--text-muted); margin-bottom: 2rem;'>Ask questions about your career path and get personalized advice.</p>", unsafe_allow_html=True)
+    st.markdown("<h1 style='margin-bottom: 1rem;'>💬 Career Advice</h1>", unsafe_allow_html=True)
     
-    if not st.session_state.resume_id:
-        st.warning("⚠️ Please upload a resume to get personalized advice.")
-        if st.button("📄 Go to Upload Resume"):
+    # ✅ Fetch user's resumes from database instead of relying on session state
+    resumes_response = api_call("GET", "/my-resumes")
+    
+    if not resumes_response or resumes_response.status_code != 200:
+        st.error("❌ Failed to load resumes")
+        return
+    
+    resumes_data = resumes_response.json()
+    resumes_list = resumes_data.get('resumes', [])
+    
+    # ✅ Check if user has any resumes
+    if not resumes_list or len(resumes_list) == 0:
+        st.warning("⚠️ Please upload a resume first to get personalized advice.")
+        if st.button("📄 Go to Upload Resume", use_container_width=True):
             smooth_transition("📄 Upload Resume")
-        st.stop()
-    
-    st.markdown("<h3>💡 Sample Questions</h3>", unsafe_allow_html=True)
-    sample_questions = [
-        "How can I become a senior software developer?",
-        "What skills should I learn for machine learning roles?",
-        "How do I transition from web development to data science?",
-        "What certifications would help my career?",
-    ]
-    
-    cols = st.columns(2)
-    for idx, question in enumerate(sample_questions):
-        with cols[idx % 2]:
-            if st.button(f"💬 {question}", key=f"sample_{idx}", use_container_width=True):
-                st.session_state.messages.append({"role": "user", "content": question})
-                st.rerun()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"], avatar="🧭" if message["role"] == "assistant" else "👤"):
-            st.markdown(message["content"])
-    
-    if prompt := st.chat_input("Ask me anything about your career..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        with st.chat_message("user", avatar="👤"):
-            st.markdown(prompt)
+        # ✅ Still show chat history even without resumes
+        st.markdown("<br><hr style='border: none; border-top: 1px solid rgba(128, 128, 128, 0.2);'><br>", unsafe_allow_html=True)
+        st.markdown("### 📜 Previous Conversations")
         
-        with st.chat_message("assistant", avatar="🧭"):
-            with st.spinner("🤔 AI is thinking..."):
+        chat_response = api_call("GET", "/chat-history")
+        if chat_response and chat_response.status_code == 200:
+            chats = chat_response.json().get('chats', [])
+            if chats:
+                st.info("You can view your previous conversations below.")
+                for chat in chats:
+                    from datetime import datetime
+                    created_date = datetime.fromisoformat(chat['created_at'].replace('Z', '+00:00'))
+                    date_str = created_date.strftime("%b %d, %Y • %I:%M %p")
+                    question_preview = chat['user_query'][:80] + "..." if len(chat['user_query']) > 80 else chat['user_query']
+                    
+                    with st.expander(f"💬 {question_preview}", expanded=False):
+                        st.markdown(f"<p style='color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;'>{date_str}</p>", unsafe_allow_html=True)
+                        st.markdown(f"""
+                            <div style="background: rgba(99, 102, 241, 0.08); padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                                <p style="margin: 0 0 0.5rem 0; color: var(--primary); font-weight: 600; font-size: 0.85rem;">YOUR QUESTION</p>
+                                <p style="margin: 0; line-height: 1.7; color: var(--text-primary);">{chat['user_query']}</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+                        st.markdown(f"""
+                            <div style="background: rgba(16, 185, 129, 0.08); padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                                <p style="margin: 0 0 0.5rem 0; color: var(--success); font-weight: 600; font-size: 0.85rem;">AI RESPONSE</p>
+                                <p style="margin: 0; line-height: 1.8; color: var(--text-primary);">{chat['ai_response']}</p>
+                            </div>
+                        """, unsafe_allow_html=True)
+        return
+    
+    # ✅ User has resumes - show resume selector
+    resume_options = {r['filename']: r['resume_id'] for r in resumes_list}
+    selected_filename = st.selectbox(
+        "📄 Select Resume for Advice",
+        options=list(resume_options.keys()),
+        key="career_advice_resume_select"
+    )
+    selected_resume_id = resume_options[selected_filename]
+    
+    # Active Resume Card
+    st.markdown(f"""
+        <div class="modern-card">
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <div style="background: rgba(99, 102, 241, 0.1); padding: 0.8rem; border-radius: 10px; font-size: 1.5rem;">📄</div>
+                <div>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">Selected Resume</p>
+                    <p style="margin: 0; color: var(--text-primary); font-weight: 600;">{selected_filename}</p>
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # Ask Question Section
+    st.markdown("### 🤖 Ask AI Anything")
+    st.markdown("<p style='color: var(--text-muted); margin-bottom: 1rem;'>Get personalized career advice based on your resume</p>", unsafe_allow_html=True)
+    
+    query = st.text_area(
+        "Your Question",
+        height=120,
+        placeholder="Examples:\n• How can I improve my resume?\n• What jobs suit my skills?\n• Should I add certifications?\n• Career growth tips for my profile?",
+        label_visibility="collapsed"
+    )
+    
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
+        ask_button = st.button("🚀 Get Advice", use_container_width=True, type="primary")
+    
+    # ✅ Show response immediately after asking
+    if ask_button:
+        if not query or len(query.strip()) < 10:
+            st.error("❌ Please ask a detailed question (at least 10 characters)")
+        else:
+            with st.spinner("🤔 AI is analyzing your profile..."):
                 payload = {
-                    "resume_id": st.session_state.resume_id,
-                    "query": prompt
+                    "resume_id": selected_resume_id,  # ✅ Use selected resume
+                    "query": query.strip()
                 }
                 response = api_call("POST", "/career-advice", json=payload)
                 
                 if response and response.status_code == 200:
-                    answer = response.json().get('answer', 'No response generated.')
-                    st.markdown(answer)
-                    st.session_state.messages.append({"role": "assistant", "content": answer})
-                    st.session_state.advice_count += 1
+                    result = response.json()
+                    
+                    # ✅ Display response immediately
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    st.success("✅ Got your answer!")
+                    
+                    st.markdown(f"""
+                        <div style="background: rgba(16, 185, 129, 0.08); padding: 1.5rem; border-radius: 12px; border-left: 4px solid var(--success); margin-top: 1rem;">
+                            <p style="margin: 0 0 0.5rem 0; color: var(--success); font-weight: 600; font-size: 0.9rem;">💡 AI RESPONSE</p>
+                            <p style="margin: 0; line-height: 1.8; color: var(--text-primary); font-size: 1rem;">{result.get('answer', 'No response available.')}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Optional: Show button to view in history
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button("📜 View All Conversations", use_container_width=False):
+                        st.rerun()
+                    
                 else:
-                    error_msg = "❌ Failed to get response. Please try again."
-                    st.error(error_msg)
-
+                    st.error("❌ Failed to get advice. Please try again.")
+    
+    # Divider
+    st.markdown("<br><hr style='border: none; border-top: 1px solid rgba(128, 128, 128, 0.2);'><br>", unsafe_allow_html=True)
+    
+    # Chat History Section
+    st.markdown("### 📜 Previous Conversations")
+    st.markdown("<p style='color: var(--text-muted); margin-bottom: 1.5rem;'>Click on any conversation to view details</p>", unsafe_allow_html=True)
+    
+    # Fetch chat history
+    response = api_call("GET", "/chat-history")
+    
+    if response and response.status_code == 200:
+        data = response.json()
+        chats = data.get('chats', [])
+        
+        if not chats:
+            st.info("📭 No conversations yet. Ask your first question above!")
+        else:
+            # Show total count
+            st.markdown(f"<p style='color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem;'>Total: {len(chats)} conversations</p>", unsafe_allow_html=True)
+            
+            # Show each chat in expander (collapsed by default)
+            for chat in chats:
+                from datetime import datetime
+                created_date = datetime.fromisoformat(chat['created_at'].replace('Z', '+00:00'))
+                date_str = created_date.strftime("%b %d, %Y • %I:%M %p")
+                
+                # Truncate question for preview (first 80 chars)
+                question_preview = chat['user_query'][:80] + "..." if len(chat['user_query']) > 80 else chat['user_query']
+                
+                # ✅ Use expander - shows only question by default
+                with st.expander(f"💬 {question_preview}", expanded=False):
+                    st.markdown(f"<p style='color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;'>{date_str}</p>", unsafe_allow_html=True)
+                    
+                    # Full Question
+                    st.markdown(f"""
+                        <div style="background: rgba(99, 102, 241, 0.08); padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                            <p style="margin: 0 0 0.5rem 0; color: var(--primary); font-weight: 600; font-size: 0.85rem;">YOUR QUESTION</p>
+                            <p style="margin: 0; line-height: 1.7; color: var(--text-primary);">{chat['user_query']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Full Answer
+                    st.markdown(f"""
+                        <div style="background: rgba(16, 185, 129, 0.08); padding: 1rem; border-radius: 10px; margin-bottom: 1rem;">
+                            <p style="margin: 0 0 0.5rem 0; color: var(--success); font-weight: 600; font-size: 0.85rem;">AI RESPONSE</p>
+                            <p style="margin: 0; line-height: 1.8; color: var(--text-primary);">{chat['ai_response']}</p>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Delete button inside expander
+                    col1, col2, col3 = st.columns([2, 1, 2])
+                    with col2:
+                        if st.button(f"🗑️ Delete", key=f"del_chat_{chat['id']}", use_container_width=True):
+                            del_response = api_call("DELETE", f"/chat-history/{chat['id']}")
+                            if del_response and del_response.status_code == 200:
+                                st.success("✅ Deleted!")
+                                st.rerun()
+    else:
+        st.error("❌ Failed to load chat history")
 
 # ==================== MY RESUMES PAGE ====================
 def show_resumes_page():
@@ -1024,6 +1191,201 @@ def show_resumes_page():
     else:
         st.error("❌ Failed to load resumes.")
 
+# ==================== MATCH HISTORY PAGE ====================
+def show_match_history_page():
+    """Display job match history"""
+    
+    st.markdown("<h1 style='margin-bottom: 1rem;'>📊 Match History</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color: var(--text-muted); margin-bottom: 2rem;'>View your previous job match analyses.</p>", unsafe_allow_html=True)
+    
+    response = api_call("GET", "/match-history")
+    
+    if response and response.status_code == 200:
+        data = response.json()
+        matches = data.get('matches', [])
+        
+        if not matches:
+            st.info("📭 No match history yet. Start by matching your resume with a job!")
+            if st.button("🎯 Match with Jobs", use_container_width=True):
+                smooth_transition("🎯 Job Match")
+            return
+        
+        st.metric("📊 Total Matches", len(matches))
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        for match in matches:
+            match_score = match['match_score']
+            
+            # Score color
+            if match_score >= 80:
+                score_color = "var(--success)"
+                score_emoji = "🎉"
+            elif match_score >= 60:
+                score_color = "#06b6d4"
+                score_emoji = "👍"
+            else:
+                score_color = "var(--warning)"
+                score_emoji = "📝"
+            
+            # Format date
+            from datetime import datetime
+            created_date = datetime.fromisoformat(match['created_at'].replace('Z', '+00:00'))
+            date_str = created_date.strftime("%b %d, %Y at %I:%M %p")
+            
+            st.markdown(f"""
+                <div class="modern-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div>
+                            <h3 style="margin: 0 0 0.3rem 0;">{score_emoji} {match['job_title']}</h3>
+                            <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;">{date_str}</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <div style="font-size: 2rem; color: {score_color}; font-weight: 800;">{match_score}%</div>
+                        </div>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            with st.expander(f"📋 View Details", expanded=False):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown("### ✅ Matched Skills")
+                    if match['matched_skills']:
+                        for skill in match['matched_skills'][:10]:
+                            st.markdown(f"""
+                                <div style='background: rgba(16, 185, 129, 0.1); padding: 0.3rem 0.8rem; border-radius: 8px; margin: 0.3rem 0; border-left: 3px solid var(--success);'>
+                                    ✓ {skill}
+                                </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.info("No matched skills")
+                
+                with col2:
+                    st.markdown("### 📚 Missing Skills")
+                    if match['missing_skills']:
+                        for skill in match['missing_skills'][:10]:
+                            st.markdown(f"""
+                                <div style='background: rgba(245, 158, 11, 0.1); padding: 0.3rem 0.8rem; border-radius: 8px; margin: 0.3rem 0; border-left: 3px solid var(--warning);'>
+                                    ○ {skill}
+                                </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        st.success("🎉 All skills matched!")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 💡 Recommendations")
+                st.markdown(f"""
+                    <div style='background: rgba(99, 102, 241, 0.05); padding: 1rem; border-radius: 12px; border-left: 4px solid var(--primary);'>
+                        <p style='margin: 0; line-height: 1.8;'>{match['recommendations']}</p>
+                    </div>
+                """, unsafe_allow_html=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("### 📄 Job Description")
+                st.text_area("", match['job_description'], height=150, key=f"jd_{match['id']}", disabled=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col3:
+                    if st.button(f"🗑️ Delete", key=f"del_match_{match['id']}", use_container_width=True):
+                        del_response = api_call("DELETE", f"/match-history/{match['id']}")
+                        if del_response and del_response.status_code == 200:
+                            st.success("✅ Deleted!")
+                            st.rerun()
+            
+            st.markdown("<div style='height: 0.5rem'></div>", unsafe_allow_html=True)
+    
+    else:
+        st.error("❌ Failed to load match history")
+
+
+# ==================== DELETE ACCOUNT PAGE ====================
+def show_delete_account_modal():
+    """Show delete account confirmation modal"""
+    
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    st.markdown("""
+        <div class="modern-card" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(239, 68, 68, 0.05)); border-color: rgba(239, 68, 68, 0.3);">
+            <h2 style="color: var(--danger); margin: 0 0 1rem 0;">⚠️ Delete Account</h2>
+            <p style="margin: 0 0 1rem 0;">This action is <strong>permanent</strong> and cannot be undone!</p>
+            <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;">
+                All your data will be permanently deleted:
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("""
+            <div class="modern-card">
+                <h4 style="margin: 0 0 0.5rem 0;">❌ What will be deleted:</h4>
+                <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-muted);">
+                    <li>All uploaded resumes</li>
+                    <li>Job match history</li>
+                    <li>Career advice conversations</li>
+                    <li>Your account credentials</li>
+                    <li>All personal data</li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+            <div class="modern-card">
+                <h4 style="margin: 0 0 0.5rem 0;">💡 Before you go:</h4>
+                <ul style="margin: 0; padding-left: 1.5rem; color: var(--text-muted);">
+                    <li>Download any resumes you need</li>
+                    <li>Save important career advice</li>
+                    <li>Consider logging out instead</li>
+                    <li>You can create a new account anytime</li>
+                </ul>
+            </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Confirmation checkbox
+    confirm = st.checkbox(
+        f"I understand that deleting my account '{st.session_state.user_data['username']}' is permanent and cannot be undone",
+        key="delete_confirm"
+    )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    
+    with col1:
+        if st.button("← Go Back", use_container_width=True):
+            smooth_transition("🏠 Home")
+    
+    with col3:
+        if st.button("🗑️ Delete My Account", use_container_width=True, type="primary", disabled=not confirm):
+            if confirm:
+                with st.spinner("Deleting your account..."):
+                    response = api_call("DELETE", "/delete-account")
+                    
+                    if response and response.status_code == 200:
+                        st.success("✅ Account deleted successfully")
+                        st.balloons()
+                        
+                        # Clear session and logout
+                        for key in session_defaults.keys():
+                            st.session_state[key] = session_defaults[key]
+                        
+                        st.info("Redirecting to login page...")
+                        import time
+                        time.sleep(2)
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to delete account. Please try again or contact support.")
+
+
+
 
 # ==================== MAIN APP ====================
 if not st.session_state.authenticated:
@@ -1048,6 +1410,7 @@ else:
             ("🎯 Job Match", "🎯 Job Match"),
             ("💬 Career Advice", "💬 Career Advice"),
             ("📁 My Resumes", "📁 My Resumes"),
+            ("📊 Match History", "📊 Match History"),
         ]
         
         for label, page in menu_items:
@@ -1071,16 +1434,18 @@ else:
                 st.session_state[key] = session_defaults[key]
             st.rerun()
 
+        # ✅ DELETE ACCOUNT BUTTON - KEEP THIS
+        if st.button("🗑️ Delete Account", use_container_width=True, key="delete_account_btn"):
+            smooth_transition("⚙️ Delete Account")
+
         st.markdown("<br><br>", unsafe_allow_html=True)
         
         st.markdown("""
         <div style='text-align: center; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color);'>
             <p style='color: var(--text-muted); font-size: 0.75rem; margin: 0;'>
-                Built with ❤️ by Pavithra R S
+                Built by Pavithra R S
             </p>
-            <p style='color: var(--text-muted); font-size: 0.7rem; margin: 0.3rem 0 0 0;'>
-                © 2025 Career Compass
-            </p>
+            
         </div>
     """, unsafe_allow_html=True)
     
@@ -1096,3 +1461,8 @@ else:
         show_career_advice_page()
     elif st.session_state.current_page == "📁 My Resumes":
         show_resumes_page()
+    elif st.session_state.current_page == "📊 Match History": 
+        show_match_history_page()
+    elif st.session_state.current_page == "⚙️ Delete Account":  
+        show_delete_account_modal()
+    

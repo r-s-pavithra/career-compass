@@ -19,7 +19,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import authentication and database models
-from models import Base, User, UserResume
+from models import Base, User, UserResume, JobMatchHistory, ChatHistory  
 from auth import (
     get_password_hash,
     authenticate_user,
@@ -37,6 +37,7 @@ from app.models import (
     JobMatchResponse,
     CareerAdviceRequest,
     CareerAdviceResponse
+    
 )
 from app.services.resume_parser import ResumeParser
 from app.services.skill_extractor import SkillExtractor
@@ -517,6 +518,29 @@ async def job_match(
         
         print(f"✅ Job match completed with score: {result.get('match_score', 0)}")
         
+        # ✅ SAVE MATCH HISTORY TO DATABASE
+        try:
+            # Extract job title (first line of JD)
+            job_title = request.job_description.split('\n')[0][:100] if request.job_description else "Job Position"
+            
+            match_history = JobMatchHistory(
+                user_id=current_user.id,
+                resume_id=request.resume_id,
+                job_description=request.job_description[:5000],  # Limit to 5000 chars
+                job_title=job_title,
+                match_score=result['match_score'],
+                matched_skills=result['matched_skills'],
+                missing_skills=result['missing_skills'],
+                recommendations=result['recommendations']
+            )
+            
+            db.add(match_history)
+            db.commit()
+            print(f"✅ Saved match history ID: {match_history.id}")
+        except Exception as e:
+            print(f"⚠️ Failed to save match history: {e}")
+            # Don't fail the request if history save fails
+        
         return JobMatchResponse(**result)
     except Exception as e:
         print(f"❌ Error in job matching: {str(e)}")
@@ -552,26 +576,105 @@ async def career_advice(
         raise
     
     print(f"💬 Career advice for user: {current_user.username}")
-    print(f"📄 Resume ID: {request.resume_id}")  # ✅ Added logging
-    print(f"❓ Query: {request.query}")           # ✅ Added logging
+    print(f"📄 Resume ID: {request.resume_id}")
+    print(f"❓ Query: {request.query}")
     
     try:
-        # ✅ Pass resume_id to ensure we use ONLY this user's resume
+        # Get AI response
         answer, context = rag_service.get_career_advice(
             query=request.query,
             resume_text=resume_data["text"],
-            resume_id=request.resume_id  # ✅ ADD THIS LINE
+            resume_id=request.resume_id
         )
         
+        print(f"✅ Generated career advice ({len(answer)} chars)")
+        
+        # ✅ Save to chat history database
+        chat_entry = ChatHistory(
+            user_id=current_user.id,
+            resume_id=request.resume_id,
+            user_query=request.query,
+            ai_response=answer
+        )
+        db.add(chat_entry)
+        db.commit()
+        print(f"💾 Saved chat to history (ID: {chat_entry.id})")
+        
+        # Return response
         return CareerAdviceResponse(
             answer=answer,
             relevant_context=context
         )
+        
     except Exception as e:
         print(f"❌ Error getting career advice: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error getting career advice: {str(e)}")
+
+
+
+@app.get("/chat-history", tags=["Analysis"])
+async def get_chat_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get user's chat history"""
+    try:
+        chats = db.query(ChatHistory)\
+            .filter(ChatHistory.user_id == current_user.id)\
+            .order_by(ChatHistory.created_at.desc())\
+            .all()
+        
+        print(f"📜 Fetched {len(chats)} chat history entries for user: {current_user.username}")
+        
+        return {
+            "chats": [
+                {
+                    "id": chat.id,
+                    "user_query": chat.user_query,
+                    "ai_response": chat.ai_response,
+                    "resume_id": chat.resume_id,
+                    "created_at": chat.created_at.isoformat()
+                }
+                for chat in chats
+            ]
+        }
+    except Exception as e:
+        print(f"❌ Error fetching chat history: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/chat-history/{chat_id}", tags=["Analysis"])
+async def delete_chat(
+    chat_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a specific chat from history"""
+    try:
+        chat = db.query(ChatHistory).filter(
+            ChatHistory.id == chat_id,
+            ChatHistory.user_id == current_user.id
+        ).first()
+        
+        if not chat:
+            raise HTTPException(status_code=404, detail="Chat not found")
+        
+        db.delete(chat)
+        db.commit()
+        
+        print(f"🗑️ Deleted chat {chat_id} for user: {current_user.username}")
+        
+        return {"message": "Chat deleted successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error deleting chat: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 @app.get("/my-resumes", tags=["Resume"])
 async def get_my_resumes(
@@ -598,6 +701,67 @@ async def get_my_resumes(
             for r in resumes
         ]
     }
+
+
+
+@app.delete("/delete-account", tags=["User"])
+async def delete_account(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Delete user account and all associated data
+    - Deletes all user resumes
+    - Deletes user record
+    - Cannot be undone!
+    """
+    try:
+        user_id = current_user.id
+        username = current_user.username
+        
+        print(f"🗑️ Deleting account for user: {username} (ID: {user_id})")
+        
+        # 1. Delete all user's resumes from database
+        user_resumes = db.query(UserResume).filter(UserResume.user_id == user_id).all()
+        
+        # Delete physical resume files
+        import os
+        for resume in user_resumes:
+            file_path = f"uploads/{resume.resume_id}.pdf"
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"   ✓ Deleted file: {file_path}")
+            
+            # Also try .docx
+            docx_path = f"uploads/{resume.resume_id}.docx"
+            if os.path.exists(docx_path):
+                os.remove(docx_path)
+                print(f"   ✓ Deleted file: {docx_path}")
+        
+        # Delete resume records from database
+        db.query(UserResume).filter(UserResume.user_id == user_id).delete()
+        print(f"   ✓ Deleted {len(user_resumes)} resume records")
+        
+        # 2. Delete user account
+        db.delete(current_user)
+        db.commit()
+        
+        print(f"✅ Account deleted successfully: {username}")
+        
+        return {
+            "success": True,
+            "message": f"Account '{username}' has been permanently deleted"
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error deleting account: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete account: {str(e)}"
+        )
+
+
 
 # ==================== ✅ FIXED VIEW RESUME ENDPOINT ====================
 @app.get("/resume/{resume_id}/view", tags=["Resume"])
@@ -727,6 +891,64 @@ def health_check():
         "database": "connected",
         "resumes_in_memory": len(resume_storage)
     }
+
+
+
+@app.get("/match-history", tags=["Analysis"])
+async def get_match_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = 20
+):
+    """Get user's job match history"""
+    
+    matches = db.query(JobMatchHistory).filter(
+        JobMatchHistory.user_id == current_user.id
+    ).order_by(
+        JobMatchHistory.created_at.desc()
+    ).limit(limit).all()
+    
+    return {
+        "count": len(matches),
+        "matches": [
+            {
+                "id": match.id,
+                "resume_id": match.resume_id,
+                "job_title": match.job_title,
+                "job_description": match.job_description,
+                "match_score": match.match_score,
+                "matched_skills": match.matched_skills,
+                "missing_skills": match.missing_skills,
+                "recommendations": match.recommendations,
+                "created_at": match.created_at.isoformat()
+            }
+            for match in matches
+        ]
+    }
+
+
+@app.delete("/match-history/{match_id}", tags=["Analysis"])
+async def delete_match_history(
+    match_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a specific match from history"""
+    
+    match = db.query(JobMatchHistory).filter(
+        JobMatchHistory.id == match_id,
+        JobMatchHistory.user_id == current_user.id
+    ).first()
+    
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+    
+    db.delete(match)
+    db.commit()
+    
+    return {"success": True, "message": "Match deleted"}
+
+
 
 # ==================== RUN SERVER ====================
 if __name__ == "__main__":
