@@ -19,7 +19,6 @@ Career Compass is an intelligent career assistant that helps job seekers analyze
 - 💬 **Career AI Assistant** - Get personalized career advice using RAG (Retrieval Augmented Generation)
 - 📊 **Match History** - Track and review past job match analyses with detailed breakdowns
 - 💭 **Chat History** - Access previous career advice conversations in collapsible format
-- 🎮 **Gamified Dashboard** - Career readiness score with achievement tiers (Beginner → Master)
 - 🔒 **Secure Authentication** - JWT-based user accounts with bcrypt password encryption
 - 🎨 **Modern UI** - Dark theme with glassmorphism effects and smooth animations
 
@@ -82,6 +81,26 @@ streamlit run frontend.py
 3. 🎯 **Job Match** - Paste job description and get AI-powered match analysis
 4. 💬 **Career Advice** - Ask questions and get personalized guidance
 5. 📊 **Track Progress** - View match history and career readiness score
+
+## 🔄 How It Works
+
+### **1. User Authentication**
+Register/Login → JWT Token Generated → Secure Session Created
+
+### **2. Resume Upload & Processing**
+Upload PDF/DOCX → Extract Text → Analyze Skills → Store in Database & Vector Store
+
+### **3. Job Matching**
+Paste Job Description → AI Compares with Resume → Calculate Match Score →
+Show Matched/Missing Skills → Generate Recommendations → Save to History
+
+### **4. Career Advice (RAG)**
+Ask Question → Retrieve Relevant Resume Sections → Send to AI with Context →
+Get Personalized Answer → Save Conversation
+
+### **5. Track Progress**
+View Match History → Access Chat Logs → Monitor Career Readiness Score
+
 
 ## 🏗️ Project Architecture
 
